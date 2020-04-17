@@ -27,33 +27,10 @@
 %}
 #endif
 
-#if defined(SWIGRUBY)
-%{
-#ifdef accept
-#undef accept
-#endif
-#ifdef close
-#undef close
-#endif
-#ifdef times
-#undef times
-#endif
-#ifdef Sleep
-#undef Sleep
-#endif
-#ifdef bind
-#undef bind
-#endif
-#ifdef ALLOC
-#undef ALLOC
-#endif
-%}
-#endif
-
 %{
 #include <ql/quantlib.hpp>
 
-#if QL_HEX_VERSION < 0x011600f0
+#if QL_HEX_VERSION < 0x011800f0
     #error using an old version of QuantLib, please update
 #endif
 
@@ -169,6 +146,7 @@
 %include dividends.i
 %include exchangerates.i
 %include exercise.i
+%include fdm.i
 %include fittedbondcurve.i
 %include forwardcurve.i
 %include fra.i
@@ -188,6 +166,7 @@
 %include montecarlo.i
 %include null.i
 %include observer.i
+%include ode.i
 %include operators.i
 %include optimizers.i
 %include parameter.i

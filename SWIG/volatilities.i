@@ -4,7 +4,7 @@
  Copyright (C) 2011 Lluis Pujol Bajador
  Copyright (C) 2015 Matthias Groncki
  Copyright (C) 2016 Peter Caspers
- Copyright (C) 2018 Matthias Lungwitz
+ Copyright (C) 2018, 2019, 2020 Matthias Lungwitz
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -35,6 +35,7 @@
 %include optimizers.i
 %include options.i
 %include termstructures.i
+%include vectors.i
 
 %define QL_TYPECHECK_VOLATILITYTYPE       8210    %enddef
 
@@ -160,6 +161,42 @@ class SwaptionVolatilityStructure : public VolatilityTermStructure {
     Real blackVariance(Time start, Time length,
                        Rate strike, bool extrapolate = false) const;
     Date optionDateFromTenor(const Period& p) const;
+    Real shift(const Period& optionTenor,
+               const Period& swapTenor,
+               bool extrapolate = false) const;
+    Real shift(const Date& optionDate,
+               const Period& swapTenor,
+               bool extrapolate = false) const;
+    Real shift(Time optionTime,
+               const Period& swapTenor,
+               bool extrapolate = false) const;
+    Real shift(const Period& optionTenor,
+               Time swapLength,
+               bool extrapolate = false) const;
+    Real shift(const Date& optionDate,
+               Time swapLength,
+               bool extrapolate = false) const;
+    Real shift(Time optionTime,
+               Time swapLength,
+               bool extrapolate = false) const;
+    boost::shared_ptr<SmileSection> smileSection(const Period& optionTenor,
+                                                 const Period& swapTenor,
+                                                 bool extr = false) const;
+    boost::shared_ptr<SmileSection> smileSection(const Date& optionDate,
+                                                 const Period& swapTenor,
+                                                 bool extr = false) const;
+    boost::shared_ptr<SmileSection> smileSection(Time optionTime,
+                                                 const Period& swapTenor,
+                                                 bool extr = false) const;
+    boost::shared_ptr<SmileSection> smileSection(const Period& optionTenor,
+                                                 Time swapLength,
+                                                 bool extr = false) const;
+    boost::shared_ptr<SmileSection> smileSection(const Date& optionDate,
+                                                 Time swapLength,
+                                                 bool extr = false) const;
+    boost::shared_ptr<SmileSection> smileSection(Time optionTime,
+                                                 Time swapLength,
+                                                 bool extr = false) const;
 };
 
 %template(SwaptionVolatilityStructureHandle) Handle<SwaptionVolatilityStructure>;
@@ -387,12 +424,28 @@ class ConstantSwaptionVolatility : public SwaptionVolatilityStructure {
 
 %{
 using QuantLib::SwaptionVolatilityMatrix;
+using QuantLib::SwaptionVolatilityDiscrete;
 %}
 
+%shared_ptr(SwaptionVolatilityDiscrete);
+class SwaptionVolatilityDiscrete : public SwaptionVolatilityStructure {
+    private:
+        SwaptionVolatilityDiscrete();
+    public:
+        const std::vector<Period>& optionTenors() const;
+        const std::vector<Date>& optionDates() const;
+        const std::vector<Time>& optionTimes() const;
+        const std::vector<Period>& swapTenors() const;
+        const std::vector<Time>& swapLengths() const;
+        const Date optionDateFromTime(Time optionTime) const;
+};
+
 %shared_ptr(SwaptionVolatilityMatrix);
-class SwaptionVolatilityMatrix : public SwaptionVolatilityStructure {
+class SwaptionVolatilityMatrix : public SwaptionVolatilityDiscrete {
   public:
     SwaptionVolatilityMatrix(const Date& referenceDate,
+                             const Calendar& calendar,
+                             BusinessDayConvention bdc,
                              const std::vector<Date>& dates,
                              const std::vector<Period>& lengths,
                              const Matrix& vols,
@@ -419,6 +472,26 @@ class SwaptionVolatilityMatrix : public SwaptionVolatilityStructure {
                              const bool flatExtrapolation = false,
                              const VolatilityType type = ShiftedLognormal,
                              const Matrix& shifts = Matrix());
+    %extend {
+        SwaptionVolatilityMatrix(const Date& referenceDate,
+                                 const std::vector<Date>& dates,
+                                 const std::vector<Period>& lengths,
+                                 const Matrix& vols,
+                                 const DayCounter& dayCounter,
+                                 const bool flatExtrapolation = false,
+                                 const VolatilityType type = ShiftedLognormal,
+                                 const Matrix& shifts = Matrix()) {
+            return new SwaptionVolatilityMatrix(referenceDate, NullCalendar(), Following,
+                                                dates, lengths, vols, dayCounter,
+                                                flatExtrapolation, type, shifts);
+        }
+    }
+    
+    std::pair<Size,Size> locate(const Date& optionDate,
+                                const Period& swapTenor) const;
+    std::pair<Size,Size> locate(Time optionTime,
+                                Time swapLength) const;
+    VolatilityType volatilityType() const;
 };
 
 %{
@@ -427,7 +500,7 @@ using QuantLib::SwaptionVolCube2;
 %}
 
 %shared_ptr(SwaptionVolCube1);
-class SwaptionVolCube1 : public SwaptionVolatilityStructure {
+class SwaptionVolCube1 : public SwaptionVolatilityDiscrete {
   public:
     SwaptionVolCube1(
              const Handle<SwaptionVolatilityStructure>& atmVolStructure,
@@ -445,7 +518,12 @@ class SwaptionVolCube1 : public SwaptionVolatilityStructure {
                                            = boost::shared_ptr<EndCriteria>(),
              Real maxErrorTolerance = Null<Real>(),
              const boost::shared_ptr<OptimizationMethod>& optMethod
-                                  = boost::shared_ptr<OptimizationMethod>());
+                                  = boost::shared_ptr<OptimizationMethod>(),
+             const Real errorAccept = Null<Real>(),
+             const bool useMaxError = false,
+             const Size maxGuesses = 50,
+             const bool backwardFlat = false,
+             const Real cutoffStrike = 0.0001);
     Matrix sparseSabrParameters() const;
     Matrix denseSabrParameters() const;
     Matrix marketVolCube() const;
@@ -453,7 +531,7 @@ class SwaptionVolCube1 : public SwaptionVolatilityStructure {
 };
 
 %shared_ptr(SwaptionVolCube2);
-class SwaptionVolCube2 : public SwaptionVolatilityStructure {
+class SwaptionVolCube2 : public SwaptionVolatilityDiscrete {
   public:
     SwaptionVolCube2(const Handle<SwaptionVolatilityStructure>& atmVolStructure,
                      const std::vector<Period>& optionTenors,
@@ -786,7 +864,7 @@ Real sabrVolatility(Rate strike,
 
 Real shiftedSabrVolatility(Rate strike,
                              Rate forward,
-                             Time expriyTime,
+                             Time expiryTime,
                              Real alpha,
                              Real beta,
                              Real nu,
@@ -800,5 +878,154 @@ Real sabrFlochKennedyVolatility(Rate strike,
                                 Real beta,
                                 Real nu,
                                 Real rho);
+
+%{
+using QuantLib::AndreasenHugeVolatilityInterpl;
+using QuantLib::AndreasenHugeVolatilityAdapter;
+using QuantLib::AndreasenHugeLocalVolAdapter;
+using QuantLib::HestonBlackVolSurface;
+%}
+
+%template(CalibrationErrorTuple) boost::tuple<Real, Real, Real>;
+
+%shared_ptr(AndreasenHugeVolatilityInterpl)
+class AndreasenHugeVolatilityInterpl : public Observable {
+  public:
+        enum InterpolationType {PiecewiseConstant, Linear, CubicSpline};
+        enum CalibrationType {
+            // we specify values directly to work around a problem in
+            // the SWIG C# module
+            Call = 1, // Option::Call,
+            Put = -1, // Option::Put,
+            CallPut};
+
+        typedef std::vector<std::pair<
+            boost::shared_ptr<VanillaOption>, boost::shared_ptr<Quote> > >
+          CalibrationSet;
+
+        AndreasenHugeVolatilityInterpl(
+            const CalibrationSet& calibrationSet,
+            const Handle<Quote>& spot,
+            const Handle<YieldTermStructure>& rTS,
+            const Handle<YieldTermStructure>& qTS,
+            InterpolationType interpolationType = CubicSpline,
+            CalibrationType calibrationType = Call,
+            Size nGridPoints = 500,
+            Real minStrike = Null<Real>(),
+            Real maxStrike = Null<Real>(),
+            const boost::shared_ptr<OptimizationMethod>& optimizationMethod =
+                boost::shared_ptr<OptimizationMethod>(new LevenbergMarquardt),
+            const EndCriteria& endCriteria =
+                EndCriteria(500, 100, 1e-12, 1e-10, 1e-10));
+
+        Date maxDate() const;
+        Real minStrike() const;
+        Real maxStrike() const;
+
+        Real fwd(Time t) const;
+        const Handle<YieldTermStructure>& riskFreeRate() const;
+
+        // returns min, max and average error in volatility units
+        boost::tuple<Real, Real, Real> calibrationError() const;
+
+        // returns the option price of the calibration type. In case
+        // of CallPut it return the call option price
+        Real optionPrice(Time t, Real strike, Option::Type optionType) const;
+
+        Volatility localVol(Time t, Real strike) const;
+};
+
+%shared_ptr(AndreasenHugeVolatilityAdapter)
+class AndreasenHugeVolatilityAdapter : public BlackVolTermStructure {
+  public:
+    AndreasenHugeVolatilityAdapter(
+        const boost::shared_ptr<AndreasenHugeVolatilityInterpl>& volInterpl,
+        Real eps = 1e-6);
+};
+
+%shared_ptr(AndreasenHugeLocalVolAdapter)
+class AndreasenHugeLocalVolAdapter : public LocalVolTermStructure {
+  public:
+    explicit AndreasenHugeLocalVolAdapter(
+        const boost::shared_ptr<AndreasenHugeVolatilityInterpl>& localVol);
+};
+
+%shared_ptr(HestonBlackVolSurface)
+class HestonBlackVolSurface : public BlackVolTermStructure {
+  public:
+    explicit HestonBlackVolSurface(
+        const Handle<HestonModel>& hestonModel,
+        const AnalyticHestonEngine::ComplexLogFormula cpxLogFormula
+            = AnalyticHestonEngine::Gatheral,
+        const AnalyticHestonEngine::Integration& integration =
+            AnalyticHestonEngine::Integration::gaussLaguerre(164));
+};
+
+%{
+using QuantLib::CmsMarket;
+%}
+
+%shared_ptr(CmsMarket)
+class CmsMarket{
+  public:       
+    CmsMarket(
+        const std::vector<Period>& swapLengths,
+        const std::vector<boost::shared_ptr<SwapIndex> >& swapIndexes,
+        const boost::shared_ptr<IborIndex>& iborIndex,
+        const std::vector<std::vector<Handle<Quote> > >& bidAskSpreads,
+        const std::vector<boost::shared_ptr<CmsCouponPricer> >& pricers,
+        const Handle<YieldTermStructure>& discountingTS);
+
+        void reprice(const Handle<SwaptionVolatilityStructure>& volStructure,
+                     Real meanReversion);
+
+        const std::vector<Period>& swapTenors() const;
+        const std::vector<Period>& swapLengths() const;
+        const Matrix& impliedCmsSpreads();
+        const Matrix& spreadErrors();
+        Matrix browse() const;
+
+        Real weightedSpreadError(const Matrix& weights);
+        Real weightedSpotNpvError(const Matrix& weights);
+        Real weightedFwdNpvError(const Matrix& weights);
+        Disposable<Array> weightedSpreadErrors(const Matrix& weights);
+        Disposable<Array> weightedSpotNpvErrors(const Matrix& weights);
+        Disposable<Array> weightedFwdNpvErrors(const Matrix& weights);
+};
+
+%{
+using QuantLib::CmsMarketCalibration;
+%}
+
+class CmsMarketCalibration {
+  public:
+    enum CalibrationType {OnSpread, OnPrice, OnForwardCmsPrice };
+
+    CmsMarketCalibration(
+        Handle<SwaptionVolatilityStructure>& volCube,
+        boost::shared_ptr<CmsMarket>& cmsMarket,
+        const Matrix& weights,
+        CalibrationType calibrationType);
+
+    Array compute(const boost::shared_ptr<EndCriteria>& endCriteria,
+              const boost::shared_ptr<OptimizationMethod>& method,
+              const Array& guess,
+              bool isMeanReversionFixed);
+
+    Matrix compute(const boost::shared_ptr<EndCriteria>& endCriteria,
+                  const boost::shared_ptr<OptimizationMethod>& method,
+                  const Matrix& guess,
+                  bool isMeanReversionFixed,
+                  const Real meanReversionGuess = Null<Real>());
+
+
+    Matrix computeParametric(const boost::shared_ptr<EndCriteria> &endCriteria,
+                      const boost::shared_ptr<OptimizationMethod> &method,
+                      const Matrix &guess, bool isMeanReversionFixed,
+                      const Real meanReversionGuess = Null<Real>());
+
+    Real error();
+    EndCriteria::Type endCriteria();
+};
 
 #endif

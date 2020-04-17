@@ -3,7 +3,7 @@
  Copyright (C) 2004, 2005, 2007, 2008 StatPro Italia srl
  Copyright (C) 2010 Klaus Spanderen
  Copyright (C) 2015 Matthias Groncki
- Copyright (C) 2018 Matthias Lungwitz
+ Copyright (C) 2018, 2019 Matthias Lungwitz
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -63,14 +63,14 @@ using QuantLib::StochasticProcess1D;
 class StochasticProcess1D
     : public StochasticProcess {
   public:
-      Real x0();
-      Real drift(Time t, Real x);
-      Real diffusion(Time t, Real x);
-      Real expectation(Time t0, Real x0, Time dt);
-      Real stdDeviation(Time t0, Real x0, Time dt);
-      Real variance(Time t0, Real x0, Time dt);
-      Real evolve(Time t0, Real x0, Time dt, Real dw);
-      Real apply(Real x0, Real dx);
+      Real x0() const;
+      Real drift(Time t, Real x) const;
+      Real diffusion(Time t, Real x) const;
+      Real expectation(Time t0, Real x0, Time dt) const;
+      Real stdDeviation(Time t0, Real x0, Time dt) const;
+      Real variance(Time t0, Real x0, Time dt) const;
+      Real evolve(Time t0, Real x0, Time dt, Real dw) const;
+      Real apply(Real x0, Real dx) const;
 };
 
 #if defined(SWIGCSHARP)
@@ -92,6 +92,14 @@ class GeneralizedBlackScholesProcess : public StochasticProcess1D {
                              const Handle<YieldTermStructure>& dividendTS,
                              const Handle<YieldTermStructure>& riskFreeTS,
                              const Handle<BlackVolTermStructure>& volTS);
+
+      GeneralizedBlackScholesProcess(
+            const Handle<Quote>& x0,
+            const Handle<YieldTermStructure>& dividendTS,
+            const Handle<YieldTermStructure>& riskFreeTS,
+            const Handle<BlackVolTermStructure>& blackVolTS,
+            const Handle<LocalVolTermStructure>& localVolTS);
+
       Handle<Quote> stateVariable();
       Handle<YieldTermStructure> dividendYield();
       Handle<YieldTermStructure> riskFreeRate();
@@ -268,6 +276,27 @@ class HullWhiteForwardProcess : public StochasticProcess1D {
 };
 
 %{
+using QuantLib::G2Process;
+%}
+
+%shared_ptr(G2Process)
+class G2Process : public StochasticProcess {
+  public:
+    G2Process(Real a, Real sigma, Real b, Real eta, Real rho);
+};
+
+%{
+using QuantLib::G2ForwardProcess;
+%}
+
+%shared_ptr(G2ForwardProcess)
+class G2ForwardProcess : public StochasticProcess {
+  public:
+    G2ForwardProcess(Real a, Real sigma, Real b, Real eta, Real rho);
+    void setForwardMeasureTime(Time t);
+};
+
+%{
 using QuantLib::GsrProcess;
 %}
 
@@ -289,6 +318,22 @@ class GsrProcess : public StochasticProcess1D {
         return boost::dynamic_pointer_cast<GsrProcess>(proc);
     }
 %}
+
+
+%{
+using QuantLib::OrnsteinUhlenbeckProcess;
+%}
+
+%shared_ptr(OrnsteinUhlenbeckProcess)
+class OrnsteinUhlenbeckProcess : public StochasticProcess1D {
+  public:
+    OrnsteinUhlenbeckProcess(
+    	Real speed, Volatility vol, Real x0 = 0.0, Real level = 0.0);
+    	    	
+    Real speed() const;
+    Real volatility() const;
+    Real level() const;
+};
 
 
 %{
@@ -359,6 +404,28 @@ class KlugeExtOUProcess : public StochasticProcess {
             	rho, kluge, extOU));
         }
 };
+
+%{
+using QuantLib::GJRGARCHProcess;
+%}
+
+%shared_ptr(GJRGARCHProcess)
+class GJRGARCHProcess : public StochasticProcess {
+  public:
+      enum Discretization { PartialTruncation, FullTruncation, Reflection};
+
+      GJRGARCHProcess(const Handle<YieldTermStructure>& riskFreeRate,
+                      const Handle<YieldTermStructure>& dividendYield,
+                      const Handle<Quote>& s0,
+                      Real v0, Real omega, Real alpha, Real beta,
+                      Real gamma, Real lambda, Real daysPerYear = 252.0,
+                      Discretization d = FullTruncation);
+
+  Handle<Quote> s0();
+  Handle<YieldTermStructure> dividendYield();
+  Handle<YieldTermStructure> riskFreeRate();
+};
+
 
 
 #endif

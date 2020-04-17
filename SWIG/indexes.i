@@ -4,7 +4,7 @@
  Copyright (C) 2003, 2004, 2005, 2006, 2007 StatPro Italia srl
  Copyright (C) 2015, 2018 Matthias Groncki
  Copyright (C) 2016 Peter Caspers
- Copyright (C) 2018 Matthias Lungwitz
+ Copyright (C) 2018, 2019 Matthias Lungwitz
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -38,9 +38,6 @@ using QuantLib::IndexManager;
 %}
 
 class IndexManager {
-    #if defined(SWIGRUBY)
-    %rename("hasHistory?")  hasHistory;
-    #endif
   private:
     IndexManager();
   public:
@@ -63,10 +60,6 @@ using QuantLib::Index;
 %shared_ptr(Index)
 
 class Index : public Observable {
-    #if defined(SWIGRUBY)
-    %rename("isValidFixingDate?") isValidFixingDate;
-    %rename("addFixing!") addFixing;
-    #endif
   private:
     Index();
   public:
@@ -80,9 +73,6 @@ class Index : public Observable {
     const TimeSeries<Real>& timeSeries() const;
     void clearFixings();
     %extend {
-        #if defined(SWIGRUBY)
-        %rename("addFixings!") addFixings;
-        #endif
         void addFixings(const std::vector<Date>& fixingDates,
                         const std::vector<Rate>& fixings,
                         bool forceOverwrite = false) {
@@ -128,9 +118,6 @@ using QuantLib::OvernightIndex;
 %shared_ptr(IborIndex)
 
 class IborIndex : public InterestRateIndex {
-    #if defined(SWIGRUBY)
-    %rename("isAdjusted?") isAdjusted;
-    #endif
   public:
     IborIndex(const std::string& familyName,
               const Period& tenor,
@@ -171,6 +158,7 @@ class OvernightIndex : public IborIndex {
 
 %{
 using QuantLib::Libor;
+using QuantLib::DailyTenorLibor;
 %}
 
 %shared_ptr(Libor)
@@ -184,6 +172,19 @@ class Libor : public IborIndex {
           const Calendar& financialCenterCalendar,
           const DayCounter& dayCounter,
           const Handle<YieldTermStructure>& h =
+                                     Handle<YieldTermStructure>());
+};
+
+%shared_ptr(DailyTenorLibor)
+
+class DailyTenorLibor : public IborIndex {
+  public:
+    DailyTenorLibor(const std::string& familyName,
+                    Natural settlementDays,
+                    const Currency& currency,
+                    const Calendar& financialCenterCalendar,
+                    const DayCounter& dayCounter,
+                    const Handle<YieldTermStructure>& h =
                                      Handle<YieldTermStructure>());
 };
 
@@ -228,6 +229,19 @@ class Name : public OvernightIndex {
 };
 %enddef
 
+%define export_daily_libor_instance(Name)
+%{
+using QuantLib::Name;
+%}
+%shared_ptr(Name)
+
+class Name : public DailyTenorLibor {
+  public:
+      Name(const Handle<YieldTermStructure>& h =
+                                    Handle<YieldTermStructure>());
+};
+%enddef
+
 
 %{
 using QuantLib::SwapIndex;
@@ -236,9 +250,6 @@ using QuantLib::SwapIndex;
 %shared_ptr(SwapIndex)
 
 class SwapIndex : public InterestRateIndex {
-    #if defined(SWIGRUBY)
-    %rename("isAdjusted?") isAdjusted;
-    #endif
   public:
     SwapIndex(const std::string& familyName,
               const Period& tenor,
@@ -269,6 +280,14 @@ class SwapIndex : public InterestRateIndex {
                                        const Handle<YieldTermStructure>& discounting) const;
     boost::shared_ptr<SwapIndex> clone(const Period& tenor) const;
 };
+
+#if defined(SWIGCSHARP)
+SWIG_STD_VECTOR_ENHANCED( boost::shared_ptr<SwapIndex> )
+#endif
+namespace std {
+    %template(SwapIndexVector)
+        vector<boost::shared_ptr<SwapIndex> >;     
+}
 
 %define export_swap_instance(Name)
 %{
@@ -329,7 +348,10 @@ class SwapSpreadIndex : public InterestRateIndex {
 };
 
 export_xibor_instance(AUDLibor);
+
 export_xibor_instance(CADLibor);
+export_daily_libor_instance(CADLiborON);
+
 export_xibor_instance(Cdor);
 export_xibor_instance(CHFLibor);
 export_xibor_instance(DKKLibor);
@@ -401,14 +423,24 @@ export_quoted_xibor_instance(EURLibor11M,EURLibor);
 export_quoted_xibor_instance(EURLibor1Y,EURLibor);
 
 export_xibor_instance(GBPLibor);
+export_daily_libor_instance(GBPLiborON);
+
 export_xibor_instance(Jibar);
 export_xibor_instance(JPYLibor);
+export_xibor_instance(Mosprime);
 export_xibor_instance(NZDLibor);
+export_xibor_instance(Pribor);
+export_xibor_instance(Robor);
 export_xibor_instance(SEKLibor);
+export_xibor_instance(Shibor);
 export_xibor_instance(Tibor);
 export_xibor_instance(THBFIX);
 export_xibor_instance(TRLibor);
+
 export_xibor_instance(USDLibor);
+export_daily_libor_instance(USDLiborON);
+
+export_xibor_instance(Wibor);
 export_xibor_instance(Zibor);
 
 export_overnight_instance(Aonia);
@@ -416,6 +448,7 @@ export_overnight_instance(Eonia);
 export_overnight_instance(Sonia);
 export_overnight_instance(FedFunds);
 export_overnight_instance(Nzocr);
+export_overnight_instance(Sofr);
 
 export_swap_instance(EuriborSwapIsdaFixA);
 export_swap_instance(EuriborSwapIsdaFixB);

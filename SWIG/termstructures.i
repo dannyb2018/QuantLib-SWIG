@@ -2,7 +2,7 @@
 /*
  Copyright (C) 2000, 2001, 2002, 2003 RiskMap srl
  Copyright (C) 2003, 2004, 2014 StatPro Italia srl
- Copyright (C) 2018 Matthias Lungwitz
+ Copyright (C) 2018, 2019 Matthias Lungwitz
  
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -39,15 +39,11 @@ using QuantLib::TermStructure;
 
 %shared_ptr(TermStructure);
 class TermStructure : public Observable {
-    #if defined(SWIGRUBY)
-    %rename("enableExtrapolation!")  enableExtrapolation;
-    %rename("disableExtrapolation!") disableExtrapolation;
-    %rename("allowsExtrapolation?")  allowsExtrapolation;
-    #endif
   private:
     TermStructure();
   public:
     DayCounter dayCounter() const;
+    Time timeFromReference(const Date& date) const;
     Calendar calendar() const;
     Date referenceDate() const;
     Date maxDate() const;

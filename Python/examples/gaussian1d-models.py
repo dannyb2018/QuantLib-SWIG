@@ -20,27 +20,27 @@ def printBasket(basket):
     print ("%-20s %-20s %-20s %-20s %-20s %-20s" % ("Expiry", "Maturity", "Nominal", "Rate", "MarketVol", "Pay/Rec"))
     print ("==================================================================================================================")
 
-    for i in range(0, len(basket)):
-        expiryDate = ql.as_swaption_helper(basket[i]).swaptionExpiryDate()
-        endDate = ql.as_swaption_helper(basket[i]).swaptionMaturityDate()
-        nominal = ql.as_swaption_helper(basket[i]).swaptionNominal()
-        vol     = ql.as_black_helper(basket[i]).volatility().value()
-        rate    = ql.as_swaption_helper(basket[i]).swaptionStrike()
+    for helper in basket:
+        expiryDate = ql.as_swaption_helper(helper).swaptionExpiryDate()
+        endDate = ql.as_swaption_helper(helper).swaptionMaturityDate()
+        nominal = ql.as_swaption_helper(helper).swaptionNominal()
+        vol     = ql.as_black_helper(helper).volatility().value()
+        rate    = ql.as_swaption_helper(helper).swaptionStrike()
         print ("%-20s %-20s %-20f %-20f %-20f" % (str(expiryDate), str(endDate), nominal, rate, vol))
 
     print("==================================================================================================================")
 
-def printModelCalibration(basket, volatility):
+def printModelCalibration(basket, volatilities):
     print ("%-20s %-20s %-20s %-20s %-20s %-20s" % ("Expiry","Model sigma","ModelPrice","MarketPrice","Model impVol","Market impVol"))
     print ("=================================================================================================================")
 
-    for i in range(0, len(basket)):
-        expiryDate = ql.as_swaption_helper(basket[i]).swaptionExpiryDate()
-        modelValue = ql.as_black_helper(basket[i]).modelValue()
-        marketValue= ql.as_black_helper(basket[i]).marketValue()
-        impVol     = ql.as_black_helper(basket[i]).impliedVolatility(modelValue, 1e-6, 1000, 0.0, 2.0)
-        vol    = ql.as_black_helper(basket[i]).volatility().value()
-        print ("%-20s %-20f %-20f %-20f %-20f %-20f" % (str(expiryDate), volatility[i], modelValue, marketValue, impVol, vol))
+    for helper, sigma in zip(basket, volatilities):
+        expiryDate = ql.as_swaption_helper(helper).swaptionExpiryDate()
+        modelValue = ql.as_black_helper(helper).modelValue()
+        marketValue= ql.as_black_helper(helper).marketValue()
+        impVol     = ql.as_black_helper(helper).impliedVolatility(modelValue, 1e-6, 1000, 0.0, 2.0)
+        vol    = ql.as_black_helper(helper).volatility().value()
+        print ("%-20s %-20f %-20f %-20f %-20f %-20f" % (str(expiryDate), sigma, modelValue, marketValue, impVol, vol))
 
     print("==================================================================================================================")
 
@@ -156,12 +156,12 @@ print("Bermudan swaption NPV (ATM calibrated GSR) = %f" % npv)
 
 # Recalibration to 4$ Strike swaption
 print( "\nThere is another mode to generate a calibration basket called"
-       "\nMaturityStrikeByDeltaGamma. This means that the maturity, "
-       "\nthe strike and the nominal of the calibrating swaption are "
-       "\ncomputed such that the npv and its first and second "
-       "\nderivative with respect to the model's state variable) of"
-       "\nthe exotics underlying match with the calibrating swaption's"
-       "\nunderlying. Let's try this in our case." )
+       "\nMaturityStrikeByDeltaGamma. This means that the maturity,"
+       "\nthe strike and the nominal of the calibrating swaptions are"
+       "\nobtained matching the NPV, first derivative and second derivative"
+       "\nof the swap you will exercise into at at each bermudan call date."
+       "\nThe derivatives are taken with respect to the model's state variable."
+       "\nLet's try this in our case." )
 
 basket = swaption.calibrationBasket(swapBase, swaptionVol, 'MaturityStrikeByDeltaGamma')
 printBasket(basket)
@@ -224,7 +224,7 @@ underlying3 = ql.NonstandardSwap(ql.VanillaSwap.Receiver,
                             ql.Thirty360(), floatSchedule,
                             euribor6m, gearing, spread, ql.Actual360(), False, True, ql.ModifiedFollowing)
 
-rebateAmount = [-1 for x in range(0,len(exerciseDates))]
+rebateAmount = [-1]*len(exerciseDates)
 exercise2 = ql.RebatedExercise(exercise, rebateAmount, 2, ql.TARGET())
 swaption3 = ql.NonstandardSwaption(underlying3,exercise2,ql.Settlement.Physical)
 
