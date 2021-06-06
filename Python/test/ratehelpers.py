@@ -2,6 +2,7 @@
 """
  Copyright (C) 2009 Joseph Malicki
  Copyright (C) 2016, 2019 Wojciech Ślusarski
+ Copyright (C) 2021 Marcin Rybacki
 
 
  This file is part of QuantLib, a free-software/open-source library
@@ -24,7 +25,7 @@ import unittest
 
 class FixedRateBondHelperTest(unittest.TestCase):
     def setUp(self):
-        ql.Settings.instance().setEvaluationDate(ql.Date(2, 1, 2010))
+        ql.Settings.instance().evaluationDate = ql.Date(2, 1, 2010)
         self.settlement_days = 3
         self.face_amount = 100.0
         self.redemption = 100.0
@@ -64,13 +65,16 @@ class FixedRateBondHelperTest(unittest.TestCase):
         self.assertEqual(bond.issueDate(), self.issue_date)
         self.assertEqual(bond.nextCouponRate(), self.coupons[0])
 
+    def tearDown(self):
+        ql.Settings.instance().evaluationDate = ql.Date()
+
 
 class OISRateHelperTest(unittest.TestCase):
     def setUp(self):
 
         # Market rates are artificial, just close to real ones.
         self.default_quote_date = ql.Date(26, 8, 2016)
-        ql.Settings.instance().setEvaluationDate(self.default_quote_date)
+        ql.Settings.instance().evaluationDate = self.default_quote_date
         self.build_eur_curve(self.default_quote_date)
 
     def build_eur_curve(self, quotes_date):
@@ -192,7 +196,7 @@ class OISRateHelperTest(unittest.TestCase):
         2018 in TARGET calendar.
         """
         test_date = ql.Date(29, 3, 2018)
-        ql.Settings.instance().setEvaluationDate(test_date)
+        ql.Settings.instance().evaluationDate = test_date
         eonia = ql.Eonia()
         calendar = eonia.fixingCalendar()
         expected_date = calendar.advance(test_date,
@@ -202,6 +206,9 @@ class OISRateHelperTest(unittest.TestCase):
         ois = ql.MakeOIS(ql.Period('1Y'), eonia, -0.003, ql.Period(0, ql.Days))
         print(ois.startDate())
         self.assertEqual(expected_date, ois.startDate())
+
+    def tearDown(self):
+        ql.Settings.instance().evaluationDate = ql.Date()
 
 
 class FxSwapRateHelperTest(unittest.TestCase):
@@ -596,7 +603,135 @@ class FxSwapRateHelperTest(unittest.TestCase):
         self.assertEqual(expected_3M_date, rate_helper.latestDate())
 
     def tearDown(self):
-        ql.Settings.instance().setEvaluationDate(ql.Date())
+        ql.Settings.instance().evaluationDate = ql.Date()
+
+
+def flat_rate(rate):
+    return ql.FlatForward(
+        0, ql.NullCalendar(), ql.QuoteHandle(ql.SimpleQuote(rate)), ql.Actual365Fixed())
+
+
+class CrossCurrencyBasisSwapRateHelperTest(unittest.TestCase):
+    def setUp(self):
+        ql.Settings.instance().evaluationDate = ql.Date(26, 5, 2021)
+
+        self.basis_point = 1.0e-4
+        self.settlement_days = 2
+        self.business_day_convention = ql.Following
+        self.calendar = ql.TARGET()
+        self.day_count = ql.Actual365Fixed()
+        self.end_of_month = False
+        base_ccy_idx_handle = ql.YieldTermStructureHandle(flat_rate(0.007))
+        quoted_ccy_idx_handle = ql.YieldTermStructureHandle(flat_rate(0.015))
+        self.base_ccy_idx = ql.Euribor3M(base_ccy_idx_handle)
+        self.quote_ccy_idx = ql.USDLibor(
+            ql.Period(3, ql.Months), quoted_ccy_idx_handle)
+        self.collateral_ccy_handle = ql.YieldTermStructureHandle(
+            flat_rate(0.009))
+        # Cross currency basis swaps data source:
+        #   N. Moreni, A. Pallavicini (2015)
+        #   FX Modelling in Collateralized Markets: foreign measures, basis curves
+        #   and pricing formulae.
+        #   section 4.2.1, Table 2.
+        self.cross_currency_basis_quotes = ((ql.Period(1, ql.Years), -14.5),
+                                            (ql.Period(18, ql.Months), -18.5),
+                                            (ql.Period(2, ql.Years), -20.5),
+                                            (ql.Period(3, ql.Years), -23.75),
+                                            (ql.Period(4, ql.Years), -25.5),
+                                            (ql.Period(5, ql.Years), -26.5),
+                                            (ql.Period(7, ql.Years), -26.75),
+                                            (ql.Period(10, ql.Years), -26.25),
+                                            (ql.Period(15, ql.Years), -24.75),
+                                            (ql.Period(20, ql.Years), -23.25),
+                                            (ql.Period(30, ql.Years), -20.50))
+
+    def buildRateHelper(
+            self,
+            quote_tuple,
+            is_fx_base_ccy_collateral_ccy,
+            is_basis_on_fx_base_ccy_leg):
+        tenor, rate = quote_tuple
+        quote_handle = ql.QuoteHandle(ql.SimpleQuote(rate * self.basis_point))
+        return ql.CrossCurrencyBasisSwapRateHelper(
+            quote_handle,
+            tenor,
+            self.settlement_days,
+            self.calendar,
+            self.business_day_convention,
+            self.end_of_month,
+            self.base_ccy_idx,
+            self.quote_ccy_idx,
+            self.collateral_ccy_handle,
+            is_fx_base_ccy_collateral_ccy,
+            is_basis_on_fx_base_ccy_leg)
+
+    def assertImpliedQuotes(
+            self,
+            is_fx_base_ccy_collateral_ccy,
+            is_basis_on_fx_base_ccy_leg):
+        eps = 1.0e-8
+        helpers = [self.buildRateHelper(q,
+                                        is_fx_base_ccy_collateral_ccy,
+                                        is_basis_on_fx_base_ccy_leg)
+                   for q in self.cross_currency_basis_quotes]
+        term_structure = ql.PiecewiseLogLinearDiscount(
+            self.settlement_days, self.calendar, helpers, self.day_count)
+        settlement_date = term_structure.referenceDate()
+
+        # Trigger bootstrap
+        discount_at_origin = term_structure.discount(settlement_date)
+        self.assertAlmostEquals(
+            first=discount_at_origin, second=1.0, delta=eps)
+
+        for q, h in zip(self.cross_currency_basis_quotes, helpers):
+            tenor, expected_rate = q
+            actual_rate = h.impliedQuote() / self.basis_point
+
+            fail_msg = """ Failed to replicate cross currency basis:
+                            tenor: {tenor}
+                            actual basis: {actual_rate}
+                            expected basis: {expected_rate}
+                            tolerance: {tolerance}
+                       """.format(tenor=tenor,
+                                  actual_rate=actual_rate,
+                                  expected_rate=expected_rate,
+                                  tolerance=eps)
+            self.assertAlmostEquals(
+                first=actual_rate,
+                second=expected_rate,
+                delta=eps,
+                msg=fail_msg)
+
+    def testFxBasisSwapsWithCollateralInBaseAndBasisInQuoteCcy(self):
+        """ Testing basis swaps instruments with collateral in base ccy and basis in quote ccy... """
+        is_fx_base_ccy_collateral_ccy = True
+        is_basis_on_fx_base_currency_leg = False
+        self.assertImpliedQuotes(
+            is_fx_base_ccy_collateral_ccy, is_basis_on_fx_base_currency_leg)
+
+    def testFxBasisSwapsWithCollateralInQuoteAndBasisInBaseCcy(self):
+        """ Testing basis swaps instruments with collateral in quote ccy and basis in base ccy... """
+        is_fx_base_ccy_collateral_ccy = False
+        is_basis_on_fx_base_currency_leg = True
+        self.assertImpliedQuotes(
+            is_fx_base_ccy_collateral_ccy, is_basis_on_fx_base_currency_leg)
+
+    def testFxBasisSwapsWithCollateralAndBasisInBaseCcy(self):
+        """ Testing basis swaps instruments with collateral and basis in base ccy... """
+        is_fx_base_ccy_collateral_ccy = True
+        is_basis_on_fx_base_currency_leg = True
+        self.assertImpliedQuotes(
+            is_fx_base_ccy_collateral_ccy, is_basis_on_fx_base_currency_leg)
+
+    def testFxBasisSwapsWithCollateralAndBasisInQuoteCcy(self):
+        """ Testing basis swaps instruments with collateral and basis in quote ccy... """
+        is_fx_base_ccy_collateral_ccy = False
+        is_basis_on_fx_base_currency_leg = False
+        self.assertImpliedQuotes(
+            is_fx_base_ccy_collateral_ccy, is_basis_on_fx_base_currency_leg)
+
+    def tearDown(self):
+        ql.Settings.instance().evaluationDate = ql.Date()
 
 
 if __name__ == "__main__":
@@ -605,4 +740,6 @@ if __name__ == "__main__":
     suite.addTest(unittest.makeSuite(FixedRateBondHelperTest, "test"))
     suite.addTest(unittest.makeSuite(OISRateHelperTest, "test"))
     suite.addTest(unittest.makeSuite(FxSwapRateHelperTest, "test"))
+    suite.addTest(unittest.makeSuite(
+        CrossCurrencyBasisSwapRateHelperTest, "test"))
     unittest.TextTestRunner(verbosity=2).run(suite)

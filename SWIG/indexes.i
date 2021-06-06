@@ -48,6 +48,7 @@ class IndexManager {
     std::vector<std::string> histories() const;
     void clearHistory(const std::string& name);
     void clearHistories();
+    bool hasHistoricalFixing(const std::string& name, const Date& fixingDate) const;
 };
 
 
@@ -66,6 +67,7 @@ class Index : public Observable {
     std::string name() const;
     Calendar fixingCalendar() const;
     bool isValidFixingDate(const Date& fixingDate) const;
+    bool hasHistoricalFixing(const Date& fixingDate) const;
     Real fixing(const Date& fixingDate,
                 bool forecastTodaysFixing = false) const;
     void addFixing(const Date& fixingDate, Rate fixing,
@@ -132,14 +134,13 @@ class IborIndex : public InterestRateIndex {
     BusinessDayConvention businessDayConvention() const;
     bool endOfMonth() const;
     Handle<YieldTermStructure> forwardingTermStructure() const;
-    boost::shared_ptr<IborIndex> clone(
-                                   const Handle<YieldTermStructure>&) const;
+    ext::shared_ptr<IborIndex> clone(const Handle<YieldTermStructure>&) const;
 };
 
 %inline %{
-    boost::shared_ptr<IborIndex> as_iborindex(
-                          const boost::shared_ptr<InterestRateIndex>& index) {
-        return boost::dynamic_pointer_cast<IborIndex>(index);
+    ext::shared_ptr<IborIndex> as_iborindex(
+                          const ext::shared_ptr<InterestRateIndex>& index) {
+        return ext::dynamic_pointer_cast<IborIndex>(index);
     }
 %}
 
@@ -154,6 +155,11 @@ class OvernightIndex : public IborIndex {
                    const DayCounter& dayCounter,
                    const Handle<YieldTermStructure>& h =
                                     Handle<YieldTermStructure>());
+    %extend {
+        ext::shared_ptr<OvernightIndex> clone(const Handle<YieldTermStructure>& h) {
+            return ext::dynamic_pointer_cast<OvernightIndex>(self->clone(h));
+        }
+    }
 };
 
 %{
@@ -259,7 +265,7 @@ class SwapIndex : public InterestRateIndex {
               const Period& fixedLegTenor,
               BusinessDayConvention fixedLegConvention,
               const DayCounter& fixedLegDayCounter,
-              const boost::shared_ptr<IborIndex>& iborIndex);
+              const ext::shared_ptr<IborIndex>& iborIndex);
     SwapIndex(const std::string& familyName,
               const Period& tenor,
               Integer settlementDays,
@@ -268,25 +274,25 @@ class SwapIndex : public InterestRateIndex {
               const Period& fixedLegTenor,
               BusinessDayConvention fixedLegConvention,
               const DayCounter& fixedLegDayCounter,
-              const boost::shared_ptr<IborIndex>& iborIndex,
+              const ext::shared_ptr<IborIndex>& iborIndex,
               const Handle<YieldTermStructure>& discountCurve);
     Period fixedLegTenor() const;
     BusinessDayConvention fixedLegConvention() const;
-    boost::shared_ptr<IborIndex> iborIndex() const;
+    ext::shared_ptr<IborIndex> iborIndex() const;
     Handle<YieldTermStructure> forwardingTermStructure() const;
     Handle<YieldTermStructure> discountingTermStructure() const;
-    boost::shared_ptr<SwapIndex> clone(const Handle<YieldTermStructure>& h) const;
-    boost::shared_ptr<SwapIndex> clone(const Handle<YieldTermStructure>& forwarding,
+    ext::shared_ptr<SwapIndex> clone(const Handle<YieldTermStructure>& h) const;
+    ext::shared_ptr<SwapIndex> clone(const Handle<YieldTermStructure>& forwarding,
                                        const Handle<YieldTermStructure>& discounting) const;
-    boost::shared_ptr<SwapIndex> clone(const Period& tenor) const;
+    ext::shared_ptr<SwapIndex> clone(const Period& tenor) const;
 };
 
 #if defined(SWIGCSHARP)
-SWIG_STD_VECTOR_ENHANCED( boost::shared_ptr<SwapIndex> )
+SWIG_STD_VECTOR_ENHANCED( ext::shared_ptr<SwapIndex> )
 #endif
 namespace std {
     %template(SwapIndexVector)
-        vector<boost::shared_ptr<SwapIndex> >;     
+        vector<ext::shared_ptr<SwapIndex> >;
 }
 
 %define export_swap_instance(Name)
@@ -320,9 +326,9 @@ class Name : public Base {
 %enddef
 
 %inline %{
-    boost::shared_ptr<SwapIndex> as_swap_index(
-                          const boost::shared_ptr<InterestRateIndex>& index) {
-        return boost::dynamic_pointer_cast<SwapIndex>(index);
+    ext::shared_ptr<SwapIndex> as_swap_index(
+                          const ext::shared_ptr<InterestRateIndex>& index) {
+        return ext::dynamic_pointer_cast<SwapIndex>(index);
     }
 %}
 
@@ -335,14 +341,14 @@ using QuantLib::SwapSpreadIndex;
 class SwapSpreadIndex : public InterestRateIndex {
   public:
     SwapSpreadIndex(const std::string& familyName,
-                    const boost::shared_ptr<SwapIndex>& swapIndex1,
-                    const boost::shared_ptr<SwapIndex>& swapIndex2,
+                    const ext::shared_ptr<SwapIndex>& swapIndex1,
+                    const ext::shared_ptr<SwapIndex>& swapIndex2,
                     const Real gearing1 = 1.0,
                     const Real gearing2 = -1.0);
     Rate forecastFixing(const Date& fixingDate) const;
     Rate pastFixing(const Date& fixingDate) const;
-    boost::shared_ptr<SwapIndex> swapIndex1();
-    boost::shared_ptr<SwapIndex> swapIndex2();
+    ext::shared_ptr<SwapIndex> swapIndex1();
+    ext::shared_ptr<SwapIndex> swapIndex2();
     Real gearing1();
     Real gearing2();
 };

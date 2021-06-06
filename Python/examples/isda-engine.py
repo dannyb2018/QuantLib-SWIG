@@ -1,10 +1,42 @@
-# coding: utf-8
+# ---
+# jupyter:
+#   jupytext:
+#     formats: py:light
+#     text_representation:
+#       extension: .py
+#       format_name: light
+#       format_version: '1.5'
+#       jupytext_version: 1.11.2
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# # ISDA CDS engine
+#
+# This file is part of QuantLib, a free-software/open-source library
+# for financial quantitative analysts and developers - https://www.quantlib.org/
+#
+# QuantLib is free software: you can redistribute it and/or modify it under the
+# terms of the QuantLib license.  You should have received a copy of the
+# license along with this program; if not, please email
+# <quantlib-dev@lists.sf.net>. The license is also available online at
+# <https://www.quantlib.org/license.shtml>.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE.  See the license for more details.
 
 import QuantLib as ql
-QL_USE_INDEXED_COUPON = False
+import pandas as pd
 
-tradeDate = ql.Date(21,5,2009)
-ql.Settings.instance().setEvaluationDate(tradeDate)
+interactive = 'get_ipython' in globals()
+
+trade_date = ql.Date(21,5,2009)
+ql.Settings.instance().setEvaluationDate(trade_date)
+
+ql.IborCoupon.createAtParCoupons()
 
 dep_tenors = [1,2,3,6,9,12]
 dep_quotes = [0.003081,0.005525,0.007163,0.012413,0.014,0.015488]
@@ -40,10 +72,15 @@ isdaRateHelpers = isdaRateHelpers + [
                       ql.Thirty360(),isda_ibor)
     for i in range(len(swap_tenors))]
 
-discountCurve = ql.RelinkableYieldTermStructureHandle()
-discountCurve.linkTo(ql.PiecewiseLogLinearDiscount(0,ql.WeekendsOnly(),
-                                                   isdaRateHelpers,
-                                                   ql.Actual365Fixed()))
+spot_date = ql.WeekendsOnly().advance(trade_date, 2 * ql.Period(ql.Daily))
+
+# Technically, the model requires the discount factor to be 1 at spot;
+# but we can't do that and also have the discount curve extend back to
+# the trade date.  For the time being, we'll keep discount = 1 at trade.
+# The results match anyway.
+
+swap_curve = ql.PiecewiseFlatForward(trade_date, isdaRateHelpers, ql.Actual365Fixed())
+discountCurve = ql.YieldTermStructureHandle(swap_curve)
 
 probabilityCurve = ql.RelinkableDefaultProbabilityTermStructureHandle()
 
@@ -77,23 +114,18 @@ markitValues = [97798.29358, #0.001
                 -4702034.688,
                 -4042340.999]
 
-if not QL_USE_INDEXED_COUPON:
-    tolerance = 1.0e-6
-else:
-    # The risk-free curve is a bit off. We might skip the tests
-    #   altogether and rely on running them with indexed coupons
-    #   disabled, but leaving them can be useful anyway. */
-    tolerance = 1.0e-3
+tolerance = 1.0e-2
 
-
-l = 0;
+l = 0
 distance = 0
 
+data = []
+upfront_date = ql.WeekendsOnly().advance(trade_date, 3 * ql.Period(ql.Daily))
 for termDate in termDates:
     for spread in spreads:
         for recovery in recoveries:
 
-            cdsSchedule = ql.Schedule(tradeDate+1, termDate,
+            cdsSchedule = ql.Schedule(trade_date, termDate,
                                       3*ql.Period(ql.Monthly),
                                       ql.WeekendsOnly(),
                                       ql.Following, ql.Unadjusted,
@@ -101,9 +133,8 @@ for termDate in termDates:
 
             quotedTrade = ql.CreditDefaultSwap(
                 ql.Protection.Buyer,10000000,0,spread,cdsSchedule,
-                ql.Following,ql.Actual360(),True,True,tradeDate+1,
-                ql.WeekendsOnly().advance(tradeDate,3*ql.Period(ql.Daily)),
-                ql.FaceValueClaim(), ql.Actual360(True))
+                ql.Following,ql.Actual360(),True,True,trade_date,
+                upfront_date, ql.FaceValueClaim(), ql.Actual360(True))
 
             h = quotedTrade.impliedHazardRate(0,discountCurve,ql.Actual365Fixed(),
                                               recovery,1e-10,
@@ -117,19 +148,31 @@ for termDate in termDates:
             engine = ql.IsdaCdsEngine(probabilityCurve,recovery,discountCurve)
             conventionalTrade = ql.CreditDefaultSwap(
                 ql.Protection.Buyer,10000000,0,0.01,cdsSchedule,
-                ql.Following,ql.Actual360(),True,True,tradeDate+1,
-                ql.WeekendsOnly().advance(tradeDate,3*ql.Period(ql.Daily)),
-                ql.FaceValueClaim(), ql.Actual360(True))
+                ql.Following,ql.Actual360(),True,True,trade_date,
+                upfront_date, ql.FaceValueClaim(), ql.Actual360(True))
             conventionalTrade.setPricingEngine(engine)
 
             upfront = conventionalTrade.notional() * conventionalTrade.fairUpfront()
-            print("Hazard:",h)
-            print("Upfront:",upfront)
-            print("Distance:",abs(upfront-markitValues[l]))
-            print("Tolerance:",tolerance)
-            print(abs(upfront-markitValues[l])<tolerance)
+
+            data.append(
+                (termDate,
+                 spread,
+                 recovery,
+                 h,
+                 upfront,
+                 markitValues[l],
+                 abs(upfront-markitValues[l]),
+                 abs(upfront-markitValues[l])<tolerance)
+            )
             distance = distance + abs(upfront-markitValues[l])
 
             l = l + 1
+
+df = pd.DataFrame(data, columns=["Term date", "Spread", "Recovery",
+                                 "Hazard rate", "Upfront", "Markit value", "Distance", "Within tolerance"])
+if not interactive:
+    print(df)
+df.style.format({'Spread': '{:.4%}', 'Hazard rate': '{:.2%}', 'Upfront': '{:.2f}',
+                 'Markit value': '{:.2f}', 'Distance': '{:.6f}'})
 
 print('total distance:',distance)

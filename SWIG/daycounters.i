@@ -68,6 +68,7 @@ namespace QuantLib {
       public:
         Actual360(const bool includeLastDay = false);
     };
+    class Actual364 : public DayCounter {};
     class Actual365Fixed : public DayCounter {
       public:
         enum Convention { Standard, Canadian, NoLeap };
@@ -75,9 +76,12 @@ namespace QuantLib {
     };
     class Thirty360 : public DayCounter {
       public:
-        enum Convention { USA, BondBasis, European, EurobondBasis, Italian };
-        Thirty360(Convention c = USA);
+        enum Convention { USA, BondBasis, European, EurobondBasis, Italian, German, ISMA, ISDA, NASD };
+        Thirty360();
+        Thirty360(Convention c, const Date& terminationDate = Date());
+        Thirty360(Convention c, bool isLastPeriod);
     };
+    class Thirty365 : public DayCounter {};
     class ActualActual : public DayCounter {
       public:
         enum Convention { ISMA, Bond, ISDA, Historical, Actual365, AFB, Euro };
@@ -89,14 +93,8 @@ namespace QuantLib {
       public:
         Business252(Calendar c = Brazil());
     };
-}
 
-%inline %{
-    /* avoid deprecation warnings */
-    DayCounter Actual365NoLeap() {
-        return QuantLib::Actual365Fixed(QuantLib::Actual365Fixed::NoLeap);
-    }
-%}
+}
 
 
 #endif

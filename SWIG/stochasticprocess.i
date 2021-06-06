@@ -4,6 +4,7 @@
  Copyright (C) 2010 Klaus Spanderen
  Copyright (C) 2015 Matthias Groncki
  Copyright (C) 2018, 2019 Matthias Lungwitz
+ Copyright (C) 2019 Pedro Coelho
 
  This file is part of QuantLib, a free-software/open-source library
  for financial quantitative analysts and developers - http://quantlib.org/
@@ -49,10 +50,10 @@ class StochasticProcess : public Observable {
 };
 
 #if defined(SWIGCSHARP)
-SWIG_STD_VECTOR_ENHANCED( boost::shared_ptr<StochasticProcess> )
+SWIG_STD_VECTOR_ENHANCED( ext::shared_ptr<StochasticProcess> )
 #endif
 %template(StochasticProcessVector)
-std::vector<boost::shared_ptr<StochasticProcess> >;
+std::vector<ext::shared_ptr<StochasticProcess> >;
 
 
 %{
@@ -74,10 +75,10 @@ class StochasticProcess1D
 };
 
 #if defined(SWIGCSHARP)
-SWIG_STD_VECTOR_ENHANCED( boost::shared_ptr<StochasticProcess1D> )
+SWIG_STD_VECTOR_ENHANCED( ext::shared_ptr<StochasticProcess1D> )
 #endif
 %template(StochasticProcess1DVector)
-std::vector<boost::shared_ptr<StochasticProcess1D> >;
+std::vector<ext::shared_ptr<StochasticProcess1D> >;
 
 
 %{
@@ -104,6 +105,7 @@ class GeneralizedBlackScholesProcess : public StochasticProcess1D {
       Handle<YieldTermStructure> dividendYield();
       Handle<YieldTermStructure> riskFreeRate();
       Handle<BlackVolTermStructure> blackVolatility();
+      Handle<LocalVolTermStructure> localVolatility();
 };
 
 %{
@@ -184,7 +186,7 @@ using QuantLib::StochasticProcessArray;
 class StochasticProcessArray : public StochasticProcess {
   public:
       StochasticProcessArray(
-               const std::vector<boost::shared_ptr<StochasticProcess1D> >&array,
+               const std::vector<ext::shared_ptr<StochasticProcess1D> >&array,
                const Matrix &correlation);
 };
 
@@ -222,13 +224,24 @@ using QuantLib::HestonProcess;
 %shared_ptr(HestonProcess)
 class HestonProcess : public StochasticProcess {
   public:
-      HestonProcess(const Handle<YieldTermStructure>& riskFreeTS,
+        enum Discretization { PartialTruncation,
+                    FullTruncation,
+                    Reflection,
+                    NonCentralChiSquareVariance,
+                    QuadraticExponential,
+                    QuadraticExponentialMartingale,
+                    BroadieKayaExactSchemeLobatto,
+                    BroadieKayaExactSchemeLaguerre,
+                    BroadieKayaExactSchemeTrapezoidal };
+
+        HestonProcess(const Handle<YieldTermStructure>& riskFreeTS,
 					   const Handle<YieldTermStructure>& dividendTS,
 					   const Handle<Quote>& s0,
 					   Real v0, Real kappa,
-                       Real theta, Real sigma, Real rho);
-                       
-      Handle<Quote> s0();
+                       Real theta, Real sigma, Real rho,
+                       Discretization d = QuadraticExponentialMartingale);
+
+        Handle<Quote> s0();
       Handle<YieldTermStructure> dividendYield();
       Handle<YieldTermStructure> riskFreeRate();
 };
@@ -313,9 +326,9 @@ class GsrProcess : public StochasticProcess1D {
 };
 
 %inline %{
-    const boost::shared_ptr<GsrProcess> as_gsr_process(
-                           const boost::shared_ptr<StochasticProcess>& proc) {
-        return boost::dynamic_pointer_cast<GsrProcess>(proc);
+    const ext::shared_ptr<GsrProcess> as_gsr_process(
+                           const ext::shared_ptr<StochasticProcess>& proc) {
+        return ext::dynamic_pointer_cast<GsrProcess>(proc);
     }
 %}
 
@@ -349,7 +362,7 @@ class ExtendedOrnsteinUhlenbeckProcess : public StochasticProcess1D {
 
         ExtendedOrnsteinUhlenbeckProcess(
                                 Real speed, Volatility sigma, Real x0,
-                                const boost::function<Real (Real)>& b,
+                                const ext::function<Real (Real)>& b,
                                 Discretization discretization = MidPoint,
                                 Real intEps = 1e-4);
     %extend{                            
@@ -383,7 +396,7 @@ class ExtendedOrnsteinUhlenbeckProcess : public StochasticProcess1D {
 class ExtOUWithJumpsProcess : public StochasticProcess {
     public:
         ExtOUWithJumpsProcess(
-            const boost::shared_ptr<ExtendedOrnsteinUhlenbeckProcess>& process,
+            const ext::shared_ptr<ExtendedOrnsteinUhlenbeckProcess>& process,
             Real Y0, Real beta, Real jumpIntensity, Real eta) {
                         
 			return new ExtOUWithJumpsProcess(
@@ -397,8 +410,8 @@ class KlugeExtOUProcess : public StochasticProcess {
     public:
         KlugeExtOUProcess(
             Real rho,
-            const boost::shared_ptr<ExtOUWithJumpsProcess>& kluge,
-            const boost::shared_ptr<ExtendedOrnsteinUhlenbeckProcess>& extOU) {
+            const ext::shared_ptr<ExtOUWithJumpsProcess>& kluge,
+            const ext::shared_ptr<ExtendedOrnsteinUhlenbeckProcess>& extOU) {
 	                            	
             return new KlugeExtOUProcess(new KlugeExtOUProcess(
             	rho, kluge, extOU));
